@@ -12,9 +12,17 @@ while vision:
     hsvFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV) 
 
     # criando a mascara para reconhecer o vermelho
-    lowerRed = np.array([0, 50, 50], dtype = "uint8")
-    upperRed= np.array([10, 255, 255], dtype = "uint8")
-    redMask = cv2.inRange(hsvFrame, lowerRed, upperRed)
+    # lower mask (0-10)
+    lower_red = np.array([0, 120, 70])
+    upper_red = np.array([10, 255, 255])
+    mask0 = cv2.inRange(hsvFrame, lower_red, upper_red)
+
+    # upper mask (170-180)
+    lower_red = np.array([170, 120, 70])
+    upper_red = np.array([180, 255, 255])
+    mask1 = cv2.inRange(hsvFrame, lower_red, upper_red)
+
+    redMask = mask0 + mask1
 
     # aplicando a mascara
     redDetection = cv2.bitwise_and(frame, frame, mask = redMask)
@@ -31,15 +39,16 @@ while vision:
         area = stats[label, cv2.CC_STAT_AREA]
         centroid = centroids[label]
 
-        print(f"Componente {label}:")
-        print(f"  - Área: {area} pixels")
-        print(f"  - Bounding Box: x={x}, y={y}, largura={width}, altura={height}")
-        print(f"  - Centroide: {centroid}")
+        if area > 100:
+            print(f"Componente {label}:")
+            print(f"  - Área: {area} pixels")
+            print(f"  - Bounding Box: x={x}, y={y}, largura={width}, altura={height}")
+            print(f"  - Centroide: {centroid}")
 
-        # Desenhar o retângulo delimitador ao redor do componente na imagem original
-        cv2.rectangle(frame, (x, y), (x + width, y + height), (0, 255, 0), 2)
-        # Desenhar o centroide
-        cv2.circle(frame, (int(centroid[0]), int(centroid[1])), 5, (255, 0, 0), -1)
+            # Desenhar o retângulo delimitador ao redor do componente na imagem original
+            cv2.rectangle(frame, (x, y), (x + width, y + height), (0, 255, 0), 2)
+            # Desenhar o centroide
+            cv2.circle(frame, (int(centroid[0]), int(centroid[1])), 5, (255, 0, 0), -1)
 
     # Mostrar a imagem original e a detecção de vermelho
     cv2.imshow('Original', frame)

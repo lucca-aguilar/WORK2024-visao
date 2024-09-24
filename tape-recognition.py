@@ -43,29 +43,44 @@ while vision:
     # Considerar apenas os dois maiores componentes
     components = components[:2]
 
+    bounding_boxes = []  # Lista para armazenar os vértices das bounding boxes
+
     # Exibir e desenhar apenas as duas maiores regiões vermelhas
     for (label, area) in components:
         x = stats[label, cv2.CC_STAT_LEFT]
         y = stats[label, cv2.CC_STAT_TOP]
         width = stats[label, cv2.CC_STAT_WIDTH]
         height = stats[label, cv2.CC_STAT_HEIGHT]
-        centroid = centroids[label]
 
         print(f"Componente {label}:")
         print(f"  - Área: {area} pixels")
         print(f"  - Bounding Box: x={x}, y={y}, largura={width}, altura={height}")
-        print(f"  - Centroide: {centroid}")
 
         # Desenhar o retângulo delimitador ao redor do componente na imagem original
         cv2.rectangle(frame, (x, y), (x + width, y + height), (0, 255, 0), 2)
-        # Desenhar o centroide
-        cv2.circle(frame, (int(centroid[0]), int(centroid[1])), 5, (255, 0, 0), -1)
+
+        # Armazenar os vértices superior esquerdo e inferior direito
+        top_left = (x, y)
+        bottom_right = (x + width, y + height)
+        bounding_boxes.append((top_left, bottom_right))
+
+    # Se houver dois bounding boxes, desenhar as linhas entre os vértices correspondentes
+    if len(bounding_boxes) == 2:
+        # Pegar os vértices das duas bounding boxes
+        box1_top_left, box1_bottom_right = bounding_boxes[0]
+        box2_top_left, box2_bottom_right = bounding_boxes[1]
+
+        # Desenhar a linha entre os vértices superiores esquerdos
+        cv2.line(frame, box1_top_left, box2_top_left, (255, 0, 0), 2)  # Linha azul entre os vértices superiores esquerdos
+
+        # Desenhar a linha entre os vértices inferiores direitos
+        cv2.line(frame, box1_bottom_right, box2_bottom_right, (0, 255, 255), 2)  # Linha amarela entre os vértices inferiores direitos
 
     # Mostrar a imagem original e a detecção de vermelho
     cv2.imshow('Original', frame)
     cv2.imshow('Detecção de Vermelho', redDetection)
 
-    # Finaliza o programa
+    # Finaliza o programa ao pressionar ESC (27)
     if cv2.waitKey(1) == 27:
         break
 

@@ -43,8 +43,6 @@ while vision:
     # Considerar apenas os dois maiores componentes
     components = components[:2]
 
-    centroid_list = []  # Lista para armazenar os centroides
-
     # Exibir e desenhar apenas as duas maiores regiões vermelhas
     for (label, area) in components:
         x = stats[label, cv2.CC_STAT_LEFT]
@@ -63,18 +61,11 @@ while vision:
         # Desenhar o centroide
         cv2.circle(frame, (int(centroid[0]), int(centroid[1])), 5, (255, 0, 0), -1)
 
-        # Adicionar o centroide à lista de centroides
-        centroid_list.append((int(centroid[0]), int(centroid[1])))
-
-    # Se houver dois centroides, desenhar a linha entre eles
-    if len(centroid_list) == 2:
-        cv2.line(frame, centroid_list[0], centroid_list[1], (0, 255, 255), 2)  # Linha amarela entre os centroides
-
     # Mostrar a imagem original e a detecção de vermelho
     cv2.imshow('Original', frame)
     cv2.imshow('Detecção de Vermelho', redDetection)
 
-    # Finaliza o programa ao pressionar ESC (27)
+    # Finaliza o programa
     if cv2.waitKey(1) == 27:
         break
 

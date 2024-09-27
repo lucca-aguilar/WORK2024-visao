@@ -123,7 +123,7 @@ while vision:
                     cv2.rectangle(frame, (x, y), (x + width, y + height), (255, 0, 0), 2)
 
             # Verificar se a soma das áreas vermelhas é maior ou igual à área branca
-            if total_red_area >= total_white_area:
+            if total_red_area >= total_white_area and total_white_area>= total_red_area/3:
                 cv2.putText(frame, "Objeto: Fita detectada", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
 
                 '''# Detecção de bordas usando Canny

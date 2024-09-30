@@ -5,7 +5,7 @@ vision = True
 camera = cv2.VideoCapture(0)
 
 # Definir área mínima para considerar um componente de "tamanho considerável"
-MIN_AREA = 100  # Ajuste conforme necessário
+MIN_AREA = 1000  # Ajuste conforme necessário
 
 while vision:
     # lê as imagens da webcam
@@ -28,8 +28,8 @@ while vision:
     redMask = mask0 + mask1
 
     # ajustando a máscara para reconhecer o branco (faixa mais ampla)
-    lower_white = np.array([0, 0, 190])  # Intervalo baixo para branco
-    upper_white = np.array([180, 40, 255])  # Intervalo alto para branco
+    lower_white = np.array([0, 0, 200])  # Intervalo baixo para branco
+    upper_white = np.array([180, 25, 255])  # Intervalo alto para branco
     whiteMask = cv2.inRange(hsvFrame, lower_white, upper_white)
 
     # aplicando as máscaras

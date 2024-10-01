@@ -1,16 +1,18 @@
-import cv2
+import cv2 
 import numpy as np
-
 
 vision = True
 camera = cv2.VideoCapture(0)
+
+# Definir área mínima para considerar um componente de "tamanho considerável"
+MIN_AREA = 1000  # Ajuste conforme necessário
 
 while vision:
     # lê as imagens da webcam
     status, frame = camera.read()
 
     # converte para o espaço de cor HSV
-    hsvFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    hsvFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV) 
 
     # criando a máscara para reconhecer o vermelho
     # lower mask (0-10)
@@ -25,141 +27,119 @@ while vision:
 
     redMask = mask0 + mask1
 
-    # aplicando a máscara
+    # ajustando a máscara para reconhecer o branco (faixa mais ampla)
+    lower_white = np.array([0, 0, 200])  # Intervalo baixo para branco
+    upper_white = np.array([180, 25, 255])  # Intervalo alto para branco
+    whiteMask = cv2.inRange(hsvFrame, lower_white, upper_white)
+
+    # aplicando as máscaras
     redDetection = cv2.bitwise_and(frame, frame, mask=redMask)
+    whiteDetection = cv2.bitwise_and(frame, frame, mask=whiteMask)
 
     # Encontrar componentes conectados e suas estatísticas
-    num_labels, labels_im, stats, centroids = cv2.connectedComponentsWithStats(redMask)
+    num_labels_red, labels_red, stats_red, centroids_red = cv2.connectedComponentsWithStats(redMask)
+    num_labels_white, labels_white, stats_white, centroids_white = cv2.connectedComponentsWithStats(whiteMask)
 
-    # Armazenar as estatísticas (exceto o fundo, que é o label 0)
-    components = []
-    for label in range(1, num_labels):
-        area = stats[label, cv2.CC_STAT_AREA]
-        if area > 100:  # Ignorar áreas muito pequenas
-            components.append((label, area))
+    # Armazenar componentes vermelhos e brancos
+    components_red = []
+    components_white = []
 
-    # Ordenar os componentes por área (do maior para o menor)
-    components = sorted(components, key=lambda x: x[1], reverse=True)
+    for label in range(1, num_labels_red):
+        area = stats_red[label, cv2.CC_STAT_AREA]
+        if area > MIN_AREA:  # Ignorar áreas muito pequenas
+            components_red.append((label, area, centroids_red[label]))
 
-    # Considerar apenas os dois maiores componentes
-    components = components[:2]
+    for label in range(1, num_labels_white):
+        area = stats_white[label, cv2.CC_STAT_AREA]
+        if area > MIN_AREA:  # Ignorar áreas muito pequenas
+            components_white.append((label, area, centroids_white[label]))
 
-    total_red_area = sum([area for _, area in components])  # Soma das áreas vermelhas
+    # Se houver componentes detectados
+    if len(components_red) > 1:
+        # Ordenar componentes com base na posição X do centróide (mais à esquerda e à direita)
+        components_red = sorted(components_red, key=lambda x: x[2][0])
 
-    bounding_boxes = []  # Lista para armazenar as bounding boxes
+        # Pegar o componente mais à esquerda e o mais à direita
+        left_component = components_red[0]
+        right_component = components_red[-1]
 
-    # Exibir e desenhar apenas as duas maiores regiões vermelhas
-    for (label, area) in components:
-        x = stats[label, cv2.CC_STAT_LEFT]
-        y = stats[label, cv2.CC_STAT_TOP]
-        width = stats[label, cv2.CC_STAT_WIDTH]
-        height = stats[label, cv2.CC_STAT_HEIGHT]
+        # Desenhar o bounding box e o centroide do componente mais à esquerda
+        x_left = stats_red[left_component[0], cv2.CC_STAT_LEFT]
+        y_left = stats_red[left_component[0], cv2.CC_STAT_TOP]
+        w_left = stats_red[left_component[0], cv2.CC_STAT_WIDTH]
+        h_left = stats_red[left_component[0], cv2.CC_STAT_HEIGHT]
+        centroid_left = centroids_red[left_component[0]]
 
-        # Desenhar o retângulo delimitador ao redor do componente na imagem original
-        cv2.rectangle(frame, (x, y), (x + width, y + height), (0, 255, 0), 2)
+        cv2.rectangle(frame, (x_left, y_left), (x_left + w_left, y_left + h_left), (0, 255, 0), 2)
+        cv2.circle(frame, (int(centroid_left[0]), int(centroid_left[1])), 5, (255, 0, 0), -1)
 
-        # Adicionar as coordenadas dos vértices da bounding box à lista
-        top_right = (x + width, y)
-        bottom_right = (x + width, y + height)
-        top_left = (x, y)
-        bottom_left = (x, y + height)
+        # Desenhar o bounding box e o centroide do componente mais à direita
+        x_right = stats_red[right_component[0], cv2.CC_STAT_LEFT]
+        y_right = stats_red[right_component[0], cv2.CC_STAT_TOP]
+        w_right = stats_red[right_component[0], cv2.CC_STAT_WIDTH]
+        h_right = stats_red[right_component[0], cv2.CC_STAT_HEIGHT]
+        centroid_right = centroids_red[right_component[0]]
 
-        bounding_boxes.append((top_left, top_right, bottom_left, bottom_right))
+        cv2.rectangle(frame, (x_right, y_right), (x_right + w_right, y_right + h_right), (0, 255, 0), 2)
+        cv2.circle(frame, (int(centroid_right[0]), int(centroid_right[1])), 5, (255, 0, 0), -1)
 
-        # Se houver duas bounding boxes, desenhar as linhas entre os vértices
-        if len(bounding_boxes) == 2:
+        # Definir a região de interesse (ROI)
+        x_min = min(x_left, x_right)
+        x_max = max(x_left + w_left, x_right + w_right)
+        y_min = min(y_left, y_right)
+        y_max = max(y_left + h_left, y_right + h_right)
 
-            # Pegar as coordenadas das duas bounding boxes
-            box1_top_left, box1_top_right, box1_bottom_left, box1_bottom_right = bounding_boxes[0]
-            box2_top_left, box2_top_right, box2_bottom_left, box2_bottom_right = bounding_boxes[1]
+        # Desenhar a ROI na imagem original
+        cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (255, 0, 255), 2)
 
-            # Desenhar linha entre o vértice superior direito da box 1 e o vértice superior esquerdo da box 2
-            cv2.line(frame, box1_top_right, box2_top_left, (0, 255, 255), 2)  # Linha amarela
+        # Extrair as máscaras da ROI
+        redMask_roi = redMask[y_min:y_max, x_min:x_max]
+        whiteMask_roi = whiteMask[y_min:y_max, x_min:x_max]
 
-            # Desenhar linha entre o vértice inferior direito da box 1 e o vértice inferior esquerdo da box 2
-            cv2.line(frame, box1_bottom_right, box2_bottom_left, (0, 255, 255), 2)  # Linha amarela
+        # Contar componentes vermelhos dentro da ROI
+        red_count = 0
+        for label in range(1, num_labels_red):
+            area = stats_red[label, cv2.CC_STAT_AREA]
+            if area > MIN_AREA:  # Considerar apenas os componentes com área considerável
+                # Desenhar bounding box do componente
+                x = stats_red[label, cv2.CC_STAT_LEFT]
+                y = stats_red[label, cv2.CC_STAT_TOP]
+                w = stats_red[label, cv2.CC_STAT_WIDTH]
+                h = stats_red[label, cv2.CC_STAT_HEIGHT]
+                if x_min <= x <= x_max and y_min <= y <= y_max:  # Checar se está na ROI
+                    red_count += 1
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)  # Vermelho para bounding box
 
-            pts = np.array([[box1_top_right, box2_top_left],
-                            [box2_top_left, box2_bottom_left],
-                            [box2_bottom_left, box1_bottom_right],
-                            [box1_bottom_right, box1_top_right]], np.int32)
+        # Contar componentes brancos dentro da ROI e entre os dois componentes vermelhos
+        white_count = 0
+        for label in range(1, num_labels_white):
+            area = stats_white[label, cv2.CC_STAT_AREA]
+            if area > MIN_AREA:  # Considerar apenas os componentes com área considerável
+                # Desenhar bounding box do componente
+                x = stats_white[label, cv2.CC_STAT_LEFT]
+                y = stats_white[label, cv2.CC_STAT_TOP]
+                w = stats_white[label, cv2.CC_STAT_WIDTH]
+                h = stats_white[label, cv2.CC_STAT_HEIGHT]
+                if x_min <= x <= x_max and y_min <= y <= y_max:  # Checar se está na ROI
+                    # Verificar se está entre os dois componentes vermelhos
+                    if (x >= x_left and (x + w) <= (x_right + w_right)):
+                        white_count += 1
+                        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 255), 2)  # Branco para bounding box
 
-            # Ajuste no uso da função cv2.fillPoly
-            pts = pts.reshape((-1, 1, 2))
-            cv2.fillPoly(frame, [pts], color=(150, 150, 0))
+        # Exibir contagens no console
+        print(f"Componentes vermelhos consideráveis na ROI: {red_count}")
+        print(f"Componentes brancos consideráveis entre os vermelhos: {white_count}")
 
-            # Criando a máscara para reconhecer o branco no polígono
-            lower_white = np.array([0, 0, 200])  # Limites para branco
-            upper_white = np.array([180, 25, 255])
-
-            # Aplicar a máscara no polígono da imagem original (frame)
-            mask_white = cv2.inRange(hsvFrame, lower_white, upper_white)
-
-            # Criar uma máscara para o polígono
-            poly_mask = np.zeros_like(mask_white)
-            cv2.fillPoly(poly_mask, [pts], 255)
-
-            # Aplicar a máscara do polígono à detecção de branco
-            white_detection_mask = cv2.bitwise_and(mask_white, poly_mask)
-            white_detection = cv2.bitwise_and(frame, frame, mask=white_detection_mask)
-
-            # Mostrar a detecção de branco no polígono
-            cv2.imshow('Detecção de Branco no Polígono', white_detection)
-
-            # Encontrar componentes conectados e suas estatísticas para a área branca
-            white_num_labels, white_labels_im, white_stats, white_centroids = cv2.connectedComponentsWithStats(white_detection_mask)
-
-            total_white_area = 0  # Inicializar a soma das áreas brancas
-
-            # Exibir as estatísticas de cada componente branco (exceto o fundo)
-            for white_label in range(1, white_num_labels):
-                white_area = white_stats[white_label, cv2.CC_STAT_AREA]
-                if white_area > 100:  # Ignorar áreas muito pequenas
-                    total_white_area += white_area  # Soma das áreas brancas
-                    x = white_stats[white_label, cv2.CC_STAT_LEFT]
-                    y = white_stats[white_label, cv2.CC_STAT_TOP]
-                    width = white_stats[white_label, cv2.CC_STAT_WIDTH]
-                    height = white_stats[white_label, cv2.CC_STAT_HEIGHT]
-                    cv2.rectangle(frame, (x, y), (x + width, y + height), (255, 0, 0), 2)
-
-            # Verificar se a soma das áreas vermelhas é maior ou igual à área branca
-            if total_red_area >= total_white_area and total_white_area>= total_red_area/3:
-                cv2.putText(frame, "Objeto: Fita detectada", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-
-                '''# Detecção de bordas usando Canny
-
-                edges = cv2.Canny(white_detection_mask, 50, 150)
-
-                # desenhar linhas usando hough lines
-
-                lines = cv2.HoughLines(edges, 1, np.pi/180, 120)
-
-                # Verificar se detectou alguma linha
-
-                if lines is not None:
-
-                    # Desenhar as linhas detectadas
-
-                    for rho, theta in lines[:, 0]:
-                        a = np.cos(theta)
-                        b = np.sin(theta)
-                        x0 = a * rho
-                        y0 = b * rho
-                        x1 = int(x0 + 1000 * (-b))
-                        y1 = int(y0 + 1000 * (a))
-                        x2 = int(x0 - 1000 * (-b))
-                        y2 = int(y0 - 1000 * (a))
-
-                        # Desenhar a linha
-                        cv2.line(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)'''
-
-    # Mostrar a imagem original e a detecção de vermelho
+    # Mostrar a imagem original e a detecção de vermelho e branco
     cv2.imshow('Original', frame)
     cv2.imshow('Detecção de Vermelho', redDetection)
+    cv2.imshow('Detecção de Branco', whiteDetection)
 
     # Finaliza o programa ao pressionar ESC (27)
     if cv2.waitKey(1) == 27:
         break
 
-camera.release()
+camera.release() 
 cv2.destroyAllWindows()
+
+

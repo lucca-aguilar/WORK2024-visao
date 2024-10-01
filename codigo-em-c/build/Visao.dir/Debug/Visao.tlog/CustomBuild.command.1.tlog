@@ -1,0 +1,10 @@
+^C:\USERS\SOPHI\DOCUMENTS\DROID\WORK 2024\VISAO\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/sophi/Documents/droid/WORK 2024/visao" "-BC:/Users/sophi/Documents/droid/WORK 2024/visao/build" --check-stamp-file "C:/Users/sophi/Documents/droid/WORK 2024/visao/build/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

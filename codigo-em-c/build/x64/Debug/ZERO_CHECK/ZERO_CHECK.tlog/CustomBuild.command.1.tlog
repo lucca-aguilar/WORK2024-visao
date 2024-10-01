@@ -1,0 +1,10 @@
+^C:\USERS\SOPHI\DOCUMENTS\DROID\WORK 2024\VISAO\BUILD\CMAKEFILES\3CA0DBA045A1FDDFA0C8DAD4F215EDF7\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/sophi/Documents/droid/WORK 2024/visao" "-BC:/Users/sophi/Documents/droid/WORK 2024/visao/build" --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file "C:/Users/sophi/Documents/droid/WORK 2024/visao/build/Visao.sln"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

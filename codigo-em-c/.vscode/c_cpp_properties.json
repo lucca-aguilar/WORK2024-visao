@@ -1,0 +1,17 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "C:/Program Files/opencv/build/include",      // Caminho para os cabeçalhos do OpenCV
+                "${workspaceFolder}/**"         // Inclui todos os arquivos do diretório de trabalho
+            ],
+            "defines": [],
+            "compilerPath": "C:/msys64/mingw64/bin/g++.exe", // Caminho para o compilador
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "gcc-x64"
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,3 @@
+C:/Users/sophi/Documents/droid/WORK 2024/visao/build/CMakeFiles/Visao.dir
+C:/Users/sophi/Documents/droid/WORK 2024/visao/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/sophi/Documents/droid/WORK 2024/visao/build/CMakeFiles/ZERO_CHECK.dir

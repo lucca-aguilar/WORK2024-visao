@@ -1,176 +1,128 @@
 #include <opencv2/opencv.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
 #include <iostream>
-#include <cmath>
 
 using namespace cv;
 using namespace std;
 
 int main() {
-    // abre a webcam
-    VideoCapture cap(0);
-    if (!cap.isOpened()) {
-        cout << "Erro ao abrir a webcam." << endl;
+    bool vision = true; // controla o loop de visão
+    VideoCapture camera(0); // abre a câmera padrão
+
+    // verifica se a câmera foi aberta corretamente
+    if (!camera.isOpened()) {
+        cout << "erro ao acessar a câmera." << endl;
         return -1;
     }
 
-    Mat frame, frame_HSV, red_detection, red_mask1, red_mask2, red_labels, red_component_mask1;
-    Mat white_mask1, white_detection_roi, white_labels_roi, white_component_mask1;
+    // define a área mínima para considerar um componente de "tamanho considerável"
+    const int MIN_AREA = 1000; // ajuste conforme necessário
 
-    int reds_in_roi = 0; // Inicializa a contagem de componentes vermelhos
-    int whites_in_roi = 0; // Inicializa a contagem de componentes brancos
+    // kernel para operações morfológicas
+    Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
 
-    Point top_left, bottom_left, top_right, bottom_right; // Variáveis de escopo mais amplo
+    while (vision) {
+        Mat frame;
+        camera >> frame; // lê as imagens da webcam
 
-    while (true) {
-        // lê frame por frame da webcam
-        cap.read(frame);
-        
-        // transforma em espaço de cor HSV
-        cvtColor(frame, frame_HSV, COLOR_BGR2HSV);
+        if (frame.empty()) {
+            cout << "erro ao capturar imagem." << endl;
+            break;
+        }
 
-        // cria uma máscara de vermelho
-        inRange(frame_HSV, Scalar(0, 100, 100), Scalar(10, 255, 255), red_mask1);   
-        inRange(frame_HSV, Scalar(160, 100, 100), Scalar(180, 255, 255), red_mask2); 
-        bitwise_or(red_mask1, red_mask2, red_detection); // combina as duas máscaras
+        // mostra a imagem original
+        imshow("Original", frame); // Adicionando a exibição do frame original
 
-        // isola os componentes vermelhos
-        int num_red_labels = connectedComponents(red_detection, red_labels, 8, CV_32S);
-        int leftest_red_label = -1, rightest_red_label = -1;
-        int leftest_red_x = numeric_limits<int>::max();
-        int rightest_red_x = numeric_limits<int>::min();
-        Rect leftest_red_bounding_box, rightest_red_bounding_box;
+        // converte para o espaço de cor hsv
+        Mat hsvFrame;
+        cvtColor(frame, hsvFrame, COLOR_BGR2HSV);
 
-        for (int label = 1; label < num_red_labels; label++) {
-            // cria uma máscara para cada componente
-            red_component_mask1 = (red_labels == label);
+        // criando a máscara para reconhecer o vermelho
+        // máscara inferior (0-10)
+        Mat mask0, mask1, redMask;
+        inRange(hsvFrame, Scalar(0, 130, 70), Scalar(10, 255, 255), mask0);
+        // máscara superior (170-180)
+        inRange(hsvFrame, Scalar(170, 130, 70), Scalar(180, 255, 255), mask1);
+        redMask = mask0 + mask1;
 
-            // encontra o contorno do componente
-            vector<vector<Point>> red_contours;
-            findContours(red_component_mask1, red_contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+        // ajustando a máscara para reconhecer o branco (faixa mais ampla)
+        Mat whiteMask;
+        inRange(hsvFrame, Scalar(0, 0, 180), Scalar(180, 50, 255), whiteMask);
 
-            if (!red_contours.empty()) {
-                // encontra a bounding box do componente
-                Rect red_bounding_box = boundingRect(red_contours[0]);
+        // aplicar operações morfológicas para melhorar a detecção
+        morphologyEx(redMask, redMask, MORPH_CLOSE, kernel);
+        morphologyEx(whiteMask, whiteMask, MORPH_CLOSE, kernel);
 
-                // verifica a área do componente -> ignora componentes com área menor que 500 pixels
-                double area = contourArea(red_contours[0]);
-                if (area < 500) {
-                    continue;
-                }
+        // encontrar contornos para vermelho
+        vector<vector<Point>> contours_red;
+        findContours(redMask, contours_red, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
-                // componente é o mais à esquerda?
-                if (red_bounding_box.x < leftest_red_x) {
-                    leftest_red_x = red_bounding_box.x;
-                    leftest_red_label = label;
-                    leftest_red_bounding_box = red_bounding_box; 
-                }
+        // listas para armazenar os componentes detectados
+        vector<Rect> red_components;
+        bool white_detected = false;
 
-                // componente é o mais à direita?
-                if (red_bounding_box.x + red_bounding_box.width > rightest_red_x) {
-                    rightest_red_x = red_bounding_box.x + red_bounding_box.width;
-                    rightest_red_label = label;
-                    rightest_red_bounding_box = red_bounding_box; 
+        // filtrar contornos vermelhos com base na área e guardar as coordenadas
+        for (const auto& contour : contours_red) {
+            double area = contourArea(contour);
+            if (area > MIN_AREA) { // ignorar áreas pequenas
+                Rect bounding_rect = boundingRect(contour);
+                red_components.push_back(bounding_rect);
+                drawContours(frame, contours_red, -1, Scalar(0, 0, 255), 2); // desenhar contornos vermelhos
+
+                // calcular a centróide do contorno e desenhar no frame
+                Moments M = moments(contour);
+                if (M.m00 != 0) {
+                    int cX = static_cast<int>(M.m10 / M.m00);
+                    int cY = static_cast<int>(M.m01 / M.m00);
+                    circle(frame, Point(cX, cY), 5, Scalar(0, 255, 0), -1); // desenhar a centróide
+                    putText(frame, "(" + to_string(cX) + "," + to_string(cY) + ")", Point(cX - 25, cY - 10), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
                 }
             }
         }
 
-        // define a roi entre os componentes mais extremos
-        if (leftest_red_label != -1 && rightest_red_label != -1) {
-            // pontos do polígono (ROI)
-            top_left = Point(leftest_red_bounding_box.x + leftest_red_bounding_box.width, leftest_red_bounding_box.y);
-            bottom_left = Point(leftest_red_bounding_box.x + leftest_red_bounding_box.width, leftest_red_bounding_box.y + leftest_red_bounding_box.height);
-            top_right = Point(rightest_red_bounding_box.x, rightest_red_bounding_box.y);
-            bottom_right = Point(rightest_red_bounding_box.x, rightest_red_bounding_box.y + rightest_red_bounding_box.height);
-
-            // vetor que define o polígono
-            vector<Point> roi_points = {top_left, bottom_left, bottom_right, top_right};
-
-            // desenha o polígono na imagem
-            polylines(frame, roi_points, true, Scalar(255, 0, 0), 2);  
-
-            // Cria a região de interesse (ROI) com base nas extremidades internas das bounding boxes
-            Rect roi = Rect(top_left, bottom_right);
-
-            // Garante que a ROI seja válida
-            if (roi.x >= 0 && roi.y >= 0 && roi.x + roi.width <= frame.cols && roi.y + roi.height <= frame.rows) {
-                Mat frame_roi = frame(roi);  // Aplica a ROI à imagem original
-
-                // Transforma a ROI para o espaço de cor HSV
-                Mat frame_HSV_roi;
-                cvtColor(frame_roi, frame_HSV_roi, COLOR_BGR2HSV);
-
-                // cria uma máscara de vermelho dentro da ROI
-                Mat red_mask1_roi, red_mask2_roi, red_detection_roi;
-                inRange(frame_HSV_roi, Scalar(0, 100, 100), Scalar(10, 255, 255), red_mask1_roi);   
-                inRange(frame_HSV_roi, Scalar(160, 100, 100), Scalar(180, 255, 255), red_mask2_roi); 
-                bitwise_or(red_mask1_roi, red_mask2_roi, red_detection_roi);
-
-                // Detecta componentes vermelhos na ROI
-                reds_in_roi = 0; // Reseta a contagem
-                int num_red_labels_roi = connectedComponents(red_detection_roi, red_labels, 8, CV_32S);
-                for (int red_label_roi = 1; red_label_roi < num_red_labels_roi; red_label_roi++) {
-                    red_component_mask1 = (red_labels == red_label_roi);
-                    vector<vector<Point>> red_contours_roi;
-                    findContours(red_component_mask1, red_contours_roi, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
-
-                    if (!red_contours_roi.empty()) {
-                        double red_area_roi = contourArea(red_contours_roi[0]);
-                        if (red_area_roi < 500) {
-                            continue;
-                        }
-                    }
-                    reds_in_roi++;
-                }
-
-                // cria uma máscara de branco na ROI
-                Mat white_mask1_roi;
-                inRange(frame_HSV_roi, Scalar(0, 0, 200), Scalar(180, 30, 255), white_mask1_roi);   
-                white_detection_roi = white_mask1_roi;
-
-                // Detecta componentes brancos dentro da ROI
-                whites_in_roi = 0;
-                int num_white_labels_roi = connectedComponents(white_detection_roi, white_labels_roi, 8, CV_32S);
-                for (int white_label_roi = 1; white_label_roi < num_white_labels_roi; white_label_roi++) {
-                    white_component_mask1 = (white_labels_roi == white_label_roi);
-                    vector<vector<Point>> white_contours_roi;
-                    findContours(white_component_mask1, white_contours_roi, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
-
-                    if (!white_contours_roi.empty()) {
-                        double white_area_roi = contourArea(white_contours_roi[0]);
-                        if (white_area_roi < 500) {
-                            continue;
-                        }
-                    }
-                    whites_in_roi++;
-                }
-
-                // Exibe a ROI
-                imshow("ROI", frame_roi);
-            }
+        // verifica se há qualquer presença de branco
+        if (countNonZero(whiteMask) > 0) { // se houver algum pixel branco na máscara
+            white_detected = true;
         }
 
-        // condição para ser uma fita
-        if (whites_in_roi == reds_in_roi + 1) {
-            putText(frame, "Virtual Wall detected", Point(50, 50), FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 0, 255), 2);
-            // desenha um polígono e calcula a distância até esse polígono
+        // verificar se temos pelo menos 3 componentes vermelhos com área considerável
+        if (red_components.size() >= 3 && white_detected) {
+            // ordenar os componentes vermelhos com base na posição horizontal (eixo x)
+            sort(red_components.begin(), red_components.end(), [](const Rect& a, const Rect& b) {
+                return a.x < b.x;
+            });
+
+            // obter o vermelho mais à esquerda e o mais à direita para definir a roi
+            Rect leftmost_red = red_components.front();
+            Rect rightmost_red = red_components.back();
+
+            // criar uma roi que engloba todos os componentes vermelhos
+            int roi_x = leftmost_red.x;
+            int roi_width = (rightmost_red.x + rightmost_red.width) - roi_x;
+            int roi_y = leftmost_red.y;
+            int roi_height = rightmost_red.y + rightmost_red.height - roi_y;
+
+            // desenhar a roi no frame
+            rectangle(frame, Point(roi_x, roi_y), Point(roi_x + roi_width, roi_y + roi_height), Scalar(0, 255, 0), 2);
+
+            // mostrar mensagem de fita zebra detectada
+            putText(frame, "fita zebra detectada", Point(50, 50), FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
+            cout << "fita zebra detectada." << endl;
+        } else {
+            cout << "fita zebra não detectada ou incompleta." << endl;
         }
 
-        // mostra a imagem da webcam
-        imshow("Webcam", frame);
+        // mostrar a imagem de detecção de vermelho
+        Mat redDetection;
+        bitwise_and(frame, frame, redDetection, redMask); // aplica a máscara
+        imshow("detecção de vermelho", redDetection); // mostra a detecção
 
-        // sai do loop ao pressionar 'q'
-        if (waitKey(30) == 'q') {
+        // finaliza o programa ao pressionar esc (27)
+        if (waitKey(1) == 27) {
             break;
         }
     }
 
+    camera.release();
+    destroyAllWindows();
     return 0;
 }
-
-/*para executar o código pelo terminal com CMake:
-cmake --build build
-.\build\Debug\Visao.exe 
-*/
-

@@ -1,18 +1,30 @@
-import cv2 
+import cv2
 import numpy as np
 
 vision = True
 camera = cv2.VideoCapture(0)
 
+# Verifica se a câmera foi aberta corretamente
+if not camera.isOpened():
+    print("Erro ao acessar a câmera.")
+    exit()
+
 # Definir área mínima para considerar um componente de "tamanho considerável"
 MIN_AREA = 1000  # Ajuste conforme necessário
+
+# Kernel para operações morfológicas
+kernel = np.ones((5, 5), np.uint8)
 
 while vision:
     # lê as imagens da webcam
     status, frame = camera.read()
 
+    if not status:
+        print("Erro ao capturar imagem.")
+        break
+
     # converte para o espaço de cor HSV
-    hsvFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV) 
+    hsvFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     # criando a máscara para reconhecer o vermelho
     # lower mask (0-10)
@@ -32,114 +44,105 @@ while vision:
     upper_white = np.array([180, 25, 255])  # Intervalo alto para branco
     whiteMask = cv2.inRange(hsvFrame, lower_white, upper_white)
 
-    # aplicando as máscaras
-    redDetection = cv2.bitwise_and(frame, frame, mask=redMask)
-    whiteDetection = cv2.bitwise_and(frame, frame, mask=whiteMask)
+    # Aplicar operações morfológicas para melhorar a detecção
+    redMask = cv2.morphologyEx(redMask, cv2.MORPH_CLOSE, kernel)
+    whiteMask = cv2.morphologyEx(whiteMask, cv2.MORPH_CLOSE, kernel)
 
-    # Encontrar componentes conectados e suas estatísticas
-    num_labels_red, labels_red, stats_red, centroids_red = cv2.connectedComponentsWithStats(redMask)
-    num_labels_white, labels_white, stats_white, centroids_white = cv2.connectedComponentsWithStats(whiteMask)
+    # Encontrar contornos para vermelho e branco
+    contours_red, _ = cv2.findContours(redMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours_white, _ = cv2.findContours(whiteMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Armazenar componentes vermelhos e brancos
-    components_red = []
-    components_white = []
+    # Listas para armazenar os componentes detectados
+    red_components = []
+    white_components = []
 
-    for label in range(1, num_labels_red):
-        area = stats_red[label, cv2.CC_STAT_AREA]
-        if area > MIN_AREA:  # Ignorar áreas muito pequenas
-            components_red.append((label, area, centroids_red[label]))
+    # Filtrar contornos vermelhos com base na área e guardar as coordenadas
+    for contour in contours_red:
+        area = cv2.contourArea(contour)
+        if area > MIN_AREA:  # Ignorar áreas pequenas
+            x, y, w, h = cv2.boundingRect(contour)
+            red_components.append((x, y, w, h))
+            cv2.drawContours(frame, [contour], -1, (0, 0, 255), 2)  # Desenhar contornos vermelhos
 
-    for label in range(1, num_labels_white):
-        area = stats_white[label, cv2.CC_STAT_AREA]
-        if area > MIN_AREA:  # Ignorar áreas muito pequenas
-            components_white.append((label, area, centroids_white[label]))
+            # Calcular a centróide do contorno e desenhar no frame
+            M = cv2.moments(contour)
+            if M["m00"] != 0:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                cv2.circle(frame, (cX, cY), 5, (0, 255, 0), -1)  # Desenhar a centróide
+                cv2.putText(frame, f"({cX},{cY})", (cX - 25, cY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-    # Se houver componentes detectados
-    if len(components_red) > 1:
-        # Ordenar componentes com base na posição X do centróide (mais à esquerda e à direita)
-        components_red = sorted(components_red, key=lambda x: x[2][0])
+    # Filtrar contornos brancos com base na área e guardar as coordenadas
+    for contour in contours_white:
+        area = cv2.contourArea(contour)
+        if area > MIN_AREA:  # Ignorar áreas pequenas
+            x, y, w, h = cv2.boundingRect(contour)
+            white_components.append((x, y, w, h))
+    # Filtrar contornos brancos com base na área e guardar as coordenadas
+    for contour in contours_white:
+        area = cv2.contourArea(contour)
+        if area > MIN_AREA:  # Ignorar áreas pequenas
+            x, y, w, h = cv2.boundingRect(contour)
+            white_components.append((x, y, w, h))
+            cv2.drawContours(frame, [contour], -1, (255, 255, 255), 2)  # Desenhar contornos brancos
 
-        # Pegar o componente mais à esquerda e o mais à direita
-        left_component = components_red[0]
-        right_component = components_red[-1]
+    # Verificar se temos pelo menos 3 componentes vermelhos com área considerável
+    if len(red_components) >= 3:
+        # Ordenar os componentes vermelhos com base na posição horizontal (eixo X)
+        red_components_sorted = sorted(red_components, key=lambda x: x[0])
 
-        # Desenhar o bounding box e o centroide do componente mais à esquerda
-        x_left = stats_red[left_component[0], cv2.CC_STAT_LEFT]
-        y_left = stats_red[left_component[0], cv2.CC_STAT_TOP]
-        w_left = stats_red[left_component[0], cv2.CC_STAT_WIDTH]
-        h_left = stats_red[left_component[0], cv2.CC_STAT_HEIGHT]
-        centroid_left = centroids_red[left_component[0]]
+        # Obter o vermelho mais à esquerda e o mais à direita para definir a ROI
+        leftmost_red = red_components_sorted[0]
+        rightmost_red = red_components_sorted[-1]
 
-        cv2.rectangle(frame, (x_left, y_left), (x_left + w_left, y_left + h_left), (0, 255, 0), 2)
-        cv2.circle(frame, (int(centroid_left[0]), int(centroid_left[1])), 5, (255, 0, 0), -1)
+        # Criar uma ROI que engloba todos os componentes vermelhos
+        roi_x = leftmost_red[0]
+        roi_width = rightmost_red[0] + rightmost_red[2] - roi_x
+        roi_y = min([y for _, y, _, _ in red_components])
+        roi_height = max([y + h for _, y, _, h in red_components]) - roi_y
 
-        # Desenhar o bounding box e o centroide do componente mais à direita
-        x_right = stats_red[right_component[0], cv2.CC_STAT_LEFT]
-        y_right = stats_red[right_component[0], cv2.CC_STAT_TOP]
-        w_right = stats_red[right_component[0], cv2.CC_STAT_WIDTH]
-        h_right = stats_red[right_component[0], cv2.CC_STAT_HEIGHT]
-        centroid_right = centroids_red[right_component[0]]
+        # Desenhar a ROI no frame
+        cv2.rectangle(frame, (roi_x, roi_y), (roi_x + roi_width, roi_y + roi_height), (0, 255, 0), 2)
 
-        cv2.rectangle(frame, (x_right, y_right), (x_right + w_right, y_right + h_right), (0, 255, 0), 2)
-        cv2.circle(frame, (int(centroid_right[0]), int(centroid_right[1])), 5, (255, 0, 0), -1)
+        # Verificar a alternância entre vermelho e branco dentro da ROI
+        zebra_pattern = []
+        last_color = None
 
-        # Definir a região de interesse (ROI)
-        x_min = min(x_left, x_right)
-        x_max = max(x_left + w_left, x_right + w_right)
-        y_min = min(y_left, y_right)
-        y_max = max(y_left + h_left, y_right + h_right)
+        # Considerar componentes na ROI
+        components_in_roi = red_components_sorted + white_components
+        components_in_roi = sorted(components_in_roi, key=lambda x: x[0])  # Ordenar por X
 
-        # Desenhar a ROI na imagem original
-        cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (255, 0, 255), 2)
+        # Verificar alternância de vermelho e branco
+        for component in components_in_roi:
+            x, y, w, h = component
+            if component in red_components_sorted:
+                if last_color != "red":
+                    zebra_pattern.append("red")
+                    last_color = "red"
+            elif component in white_components:
+                if last_color != "white":
+                    zebra_pattern.append("white")
+                    last_color = "white"
 
-        # Extrair as máscaras da ROI
-        redMask_roi = redMask[y_min:y_max, x_min:x_max]
-        whiteMask_roi = whiteMask[y_min:y_max, x_min:x_max]
-
-        # Contar componentes vermelhos dentro da ROI
-        red_count = 0
-        for label in range(1, num_labels_red):
-            area = stats_red[label, cv2.CC_STAT_AREA]
-            if area > MIN_AREA:  # Considerar apenas os componentes com área considerável
-                # Desenhar bounding box do componente
-                x = stats_red[label, cv2.CC_STAT_LEFT]
-                y = stats_red[label, cv2.CC_STAT_TOP]
-                w = stats_red[label, cv2.CC_STAT_WIDTH]
-                h = stats_red[label, cv2.CC_STAT_HEIGHT]
-                if x_min <= x <= x_max and y_min <= y <= y_max:  # Checar se está na ROI
-                    red_count += 1
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)  # Vermelho para bounding box
-
-        # Contar componentes brancos dentro da ROI e entre os dois componentes vermelhos
-        white_count = 0
-        for label in range(1, num_labels_white):
-            area = stats_white[label, cv2.CC_STAT_AREA]
-            if area > MIN_AREA:  # Considerar apenas os componentes com área considerável
-                # Desenhar bounding box do componente
-                x = stats_white[label, cv2.CC_STAT_LEFT]
-                y = stats_white[label, cv2.CC_STAT_TOP]
-                w = stats_white[label, cv2.CC_STAT_WIDTH]
-                h = stats_white[label, cv2.CC_STAT_HEIGHT]
-                if x_min <= x <= x_max and y_min <= y <= y_max:  # Checar se está na ROI
-                    # Verificar se está entre os dois componentes vermelhos
-                    if (x >= x_left and (x + w) <= (x_right + w_right)):
-                        white_count += 1
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 255), 2)  # Branco para bounding box
-
-        # Exibir contagens no console
-        print(f"Componentes vermelhos consideráveis na ROI: {red_count}")
-        print(f"Componentes brancos consideráveis entre os vermelhos: {white_count}")
+        # Verificar se há pelo menos uma alternância e 3 componentes vermelhos com área considerável
+        if zebra_pattern.count("red") >= 3 and "white" in zebra_pattern:
+            # Mostrar mensagem na tela
+            cv2.putText(frame, "Fita Zebra Detectada", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+            print(f"Padrão de fita zebra detectado: {zebra_pattern}")
+        else:
+            print("Fita zebra não detectada ou incompleta.")
+    else:
+        print("Menos de 3 componentes vermelhos detectados.")
 
     # Mostrar a imagem original e a detecção de vermelho e branco
     cv2.imshow('Original', frame)
-    cv2.imshow('Detecção de Vermelho', redDetection)
-    cv2.imshow('Detecção de Branco', whiteDetection)
+    cv2.imshow('Detecção de Vermelho', cv2.bitwise_and(frame, frame, mask=redMask))
+    cv2.imshow('Detecção de Branco', cv2.bitwise_and(frame, frame, mask=whiteMask))
 
     # Finaliza o programa ao pressionar ESC (27)
     if cv2.waitKey(1) == 27:
         break
 
-camera.release() 
+camera.release()
 cv2.destroyAllWindows()
-
 

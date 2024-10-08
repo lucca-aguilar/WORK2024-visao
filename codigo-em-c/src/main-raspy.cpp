@@ -8,12 +8,6 @@ int main() {
     bool vision = true; // controla o loop de visão
     VideoCapture camera(0); // abre a câmera padrão
 
-    // verifica se a câmera foi aberta corretamente
-    if (!camera.isOpened()) {
-        cout << "erro ao acessar a câmera." << endl;
-        return -1;
-    }
-
     // define a área mínima para considerar um componente de "tamanho considerável"
     const int MIN_AREA = 1000; // ajuste conforme necessário
 
@@ -23,15 +17,7 @@ int main() {
     while (vision) {
         Mat frame;
         camera >> frame; // lê as imagens da webcam
-
-        if (frame.empty()) {
-            cout << "erro ao capturar imagem." << endl;
-            break;
-        }
-
-        // mostra a imagem original
-        imshow("Original", frame); // Adicionando a exibição do frame original
-
+       
         // converte para o espaço de cor hsv
         Mat hsvFrame;
         cvtColor(frame, hsvFrame, COLOR_BGR2HSV);
@@ -66,15 +52,12 @@ int main() {
             if (area > MIN_AREA) { // ignorar áreas pequenas
                 Rect bounding_rect = boundingRect(contour);
                 red_components.push_back(bounding_rect);
-                drawContours(frame, contours_red, -1, Scalar(0, 0, 255), 2); // desenhar contornos vermelhos
 
                 // calcular a centróide do contorno e desenhar no frame
                 Moments M = moments(contour);
                 if (M.m00 != 0) {
                     int cX = static_cast<int>(M.m10 / M.m00);
                     int cY = static_cast<int>(M.m01 / M.m00);
-                    circle(frame, Point(cX, cY), 5, Scalar(0, 255, 0), -1); // desenhar a centróide
-                    putText(frame, "(" + to_string(cX) + "," + to_string(cY) + ")", Point(cX - 25, cY - 10), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
                 }
             }
         }
@@ -105,16 +88,14 @@ int main() {
             rectangle(frame, Point(roi_x, roi_y), Point(roi_x + roi_width, roi_y + roi_height), Scalar(0, 255, 0), 2);
 
             // mostrar mensagem de fita zebra detectada
-            putText(frame, "fita zebra detectada", Point(50, 50), FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
-            cout << "fita zebra detectada." << endl;
+            printf("fita zebra detectada\n")
         } else {
-            cout << "fita zebra não detectada ou incompleta." << endl;
+            printf("fita zebra não detectada ou incompleta\n")
         }
 
         // mostrar a imagem de detecção de vermelho
         Mat redDetection;
         bitwise_and(frame, frame, redDetection, redMask); // aplica a máscara
-        imshow("detecção de vermelho", redDetection); // mostra a detecção
 
         // finaliza o programa ao pressionar esc (27)
         if (waitKey(1) == 27) {

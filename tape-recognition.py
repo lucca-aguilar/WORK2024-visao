@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+import serial  
+import time
 
 vision = True
 camera = cv2.VideoCapture(0)
@@ -10,7 +12,7 @@ if not camera.isOpened():
     exit()
 
 # Definir área mínima para considerar um componente de "tamanho considerável"
-MIN_AREA = 1000  # Ajuste conforme necessário
+MIN_AREA = 1000  
 
 # Kernel para operações morfológicas
 kernel = np.ones((5, 5), np.uint8)
@@ -61,15 +63,12 @@ while vision:
         if area > MIN_AREA:  # Ignorar áreas pequenas
             x, y, w, h = cv2.boundingRect(contour)
             red_components.append((x, y, w, h))
-            cv2.drawContours(frame, [contour], -1, (0, 0, 255), 2)  # Desenhar contornos vermelhos
 
             # Calcular a centróide do contorno e desenhar no frame
             M = cv2.moments(contour)
             if M["m00"] != 0:
                 cX = int(M["m10"] / M["m00"])
                 cY = int(M["m01"] / M["m00"])
-                cv2.circle(frame, (cX, cY), 5, (0, 255, 0), -1)  # Desenhar a centróide
-                cv2.putText(frame, f"({cX},{cY})", (cX - 25, cY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
     # Verifica se há qualquer presença de branco
     if np.any(whiteMask > 0):  # Se houver algum pixel branco na máscara
@@ -90,23 +89,20 @@ while vision:
         roi_y = min([y for _, y, _, _ in red_components])
         roi_height = max([y + h for _, y, _, h in red_components]) - roi_y
 
-        # Desenhar a ROI no frame
-        cv2.rectangle(frame, (roi_x, roi_y), (roi_x + roi_width, roi_y + roi_height), (0, 255, 0), 2)
 
         # Mostrar mensagem de fita zebra detectada
-        cv2.putText(frame, "Fita Zebra Detectada", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
         print("Fita zebra detectada.")
+        # Enviar o caractere 'V' para o Arduino
+        serial.write(b'V')
+        
     else:
         print("Fita zebra não detectada ou incompleta.")
-
-    # Mostrar a imagem original e a detecção de vermelho
-    cv2.imshow('Original', frame)
-    cv2.imshow('Detecção de Vermelho', cv2.bitwise_and(frame, frame, mask=redMask))
 
     # Finaliza o programa ao pressionar ESC (27)
     if cv2.waitKey(1) == 27:
         break
 
+# Fechar a conexão com a câmera e a comunicação serial
 camera.release()
 cv2.destroyAllWindows()
-
+serial.close()

@@ -1,4 +1,5 @@
 #include <opencv2/opencv.hpp>
+#include <libserialport.h>
 #include <iostream>
 
 using namespace cv;
@@ -14,6 +15,21 @@ int main() {
     // kernel para operações morfológicas
     Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
 
+    // Configurar a porta serial para se comunicar com o Arduino
+    struct sp_port *port;
+    sp_return result = sp_get_port_by_name("/dev/tty1", &port);
+    if (result != SP_OK) {
+        cerr << "Erro ao encontrar a porta serial" << endl;
+        return 1;
+    }
+
+    if (sp_open(port, SP_MODE_WRITE) != SP_OK) {
+        cerr << "Erro ao abrir a porta serial" << endl;
+        return 1;
+    }
+
+    sp_set_baudrate(port, 9600);  // Configurar a taxa de transmissão
+
     while (vision) {
         Mat frame;
         camera >> frame; // lê as imagens da webcam
@@ -23,10 +39,8 @@ int main() {
         cvtColor(frame, hsvFrame, COLOR_BGR2HSV);
 
         // criando a máscara para reconhecer o vermelho
-        // máscara inferior (0-10)
         Mat mask0, mask1, redMask;
         inRange(hsvFrame, Scalar(0, 130, 70), Scalar(10, 255, 255), mask0);
-        // máscara superior (170-180)
         inRange(hsvFrame, Scalar(170, 130, 70), Scalar(180, 255, 255), mask1);
         redMask = mask0 + mask1;
 
@@ -86,11 +100,15 @@ int main() {
 
             // desenhar a roi no frame
             rectangle(frame, Point(roi_x, roi_y), Point(roi_x + roi_width, roi_y + roi_height), Scalar(0, 255, 0), 2);
-
             // mostrar mensagem de fita zebra detectada
-            printf("fita zebra detectada\n")
+            printf("fita zebra detectada\n");
+
+            // Enviar o caractere 'V' para o Arduino via serial
+            const char command = 'V';
+            sp_blocking_write(port, &command, 1, 1000); // enviar o caractere 'V'
+
         } else {
-            printf("fita zebra não detectada ou incompleta\n")
+            printf("fita zebra não detectada ou incompleta\n");
         }
 
         // mostrar a imagem de detecção de vermelho
@@ -103,8 +121,11 @@ int main() {
         }
     }
 
+    // Fechar a porta serial ao sair do programa
+    sp_close(port);
+    sp_free_port(port);
+
     camera.release();
     destroyAllWindows();
     return 0;
 }
-
